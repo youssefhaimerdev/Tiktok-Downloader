@@ -35,26 +35,23 @@ export async function GET(req: NextRequest) {
   try {
     const data = await fetchFromTikwm(rawUrl)
 
-    // tikwm's /video/ endpoint is a direct, clean MP4 by video ID.
-    // This is more reliable than data.no_watermark which can be an
-    // auth-gated CDN URL or HLS stream that the browser can't save.
-    const videoId: string = data.id ?? ''
-    const noWatermarkUrl: string = videoId
-      ? `https://tikwm.com/video/${videoId}.mp4`
-      : (data.play || '')
-
+    // Use the actual URL from the API response.
+    // Priority: no_watermark > hdplay > play
+    const noWatermarkUrl: string = data.no_watermark || data.hdplay || data.play || ''
     if (!noWatermarkUrl) throw new Error('No download URL returned')
 
     return NextResponse.json({
       success: true,
       data: {
-        id: videoId || 'unknown',
+        id: data.id ?? 'unknown',
         title: data.title ?? 'TikTok Video',
         author: data.author?.nickname ?? data.author?.unique_id ?? 'Unknown',
         thumbnail: data.cover ?? data.origin_cover ?? '',
         duration: data.duration ?? 0,
         playUrl: rawUrl,
-        noWatermarkUrl,
+        // Pass through our own proxy so browser downloads it as a file
+        // instead of navigating to a CDN URL that returns 404 or needs auth
+        noWatermarkUrl: `/api/proxy?url=${encodeURIComponent(noWatermarkUrl)}`,
       },
     })
   } catch (err: unknown) {
